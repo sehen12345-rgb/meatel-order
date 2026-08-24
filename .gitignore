@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.xlsx
+*.csv
+*.exe
+dist/
+build/
+*.spec
+.env
