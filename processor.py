@@ -103,12 +103,13 @@ def parse_size_packs(text: str):
 def get_set_by_name(product_name: str, quantity: int):
     """상품명에서 세트 종류 판별 → [(품목명, 팩수), ...]"""
     name = str(product_name)
-    if "인기 6종" in name or "6종" in name:
+    # 9종을 먼저 체크 (맛보기 패키지가 9종·10종 둘 다 포함되어 있어 순서 중요)
+    if "9종" in name:
+        template = SET_9_100G
+    elif "인기 6종" in name or "6종" in name:
         template = SET_6_200G
     elif "10종" in name or "맛보기 패키지" in name:
         template = SET_10_200G
-    elif "9종" in name:
-        template = SET_9_100G
     else:
         return None  # 인식 불가
 
@@ -303,7 +304,19 @@ def parse_ss_option(option: str, quantity: int):
         cutting = parts.get("컷팅방식", "")
         sopojang= parts.get("소포장 선택", "")
 
+        # 인기 6종 종합세트 → 개별 행으로 펼침
+        if "인기 6종" in cutting or "6종 종합세트" in cutting:
+            return [(build_product_name(b, c, w), quantity, True) for b, c, w in SET_6_200G]
+
         weight, packs = parse_size_packs(sopojang)
+
+        # 소포장 선택 없이 컷팅방식에 무게·팩수가 포함된 경우
+        # 예: '컷팅방식: 슬라이스 200g X 5팩'
+        if not weight:
+            weight, packs = parse_size_packs(cutting)
+            if weight:
+                cutting = re.sub(r'\s*\d+g\s*[xX×]\s*\d+팩.*', '', cutting, flags=re.IGNORECASE).strip()
+
         product = build_product_name(buwi, cutting, weight or "")
         return [(product, packs * quantity, True)]
 
@@ -375,7 +388,10 @@ def process_smartstore(xlsx_path: str, password: str = "1111") -> tuple:
         if items is None:
             items = get_set_by_name(product_name, quantity)
             if items is None:
-                items = []
+                # 파싱 불가 옵션 → 옵션 문자열을 품목명으로 그대로 포함
+                opt_str = str(option) if option and str(option) != "nan" else ""
+                fallback = opt_str if opt_str else product_name
+                items = [(fallback, quantity, True)] if fallback else []
             else:
                 items = [(p, n, True) for p, n in items]
 
