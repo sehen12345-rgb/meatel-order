@@ -74,11 +74,17 @@ def normalize_cutting(cutting: str) -> str:
 def normalize_buwi(buwi: str) -> str:
     """부위명 → 산지 포함 정규화"""
     buwi = buwi.strip()
+    # 부채살(미국산) → 부채살(호주산)으로 통일
+    if "부채살" in buwi and "미국산" in buwi:
+        return buwi.replace("미국산", "호주산")
+    # 지방제한(다짐육)은 항상 지방제한(호주산)으로 통일
+    if "지방제한" in buwi or ("다짐육" in buwi and "지방" in buwi):
+        return "지방제한(호주산)"
     if "호주산" in buwi or "미국산" in buwi:
         return buwi
     if "우삼겹" in buwi:
         return "우삼겹(미국산)"
-    if "지방제한" in buwi or "다짐육" in buwi:
+    if "다짐육" in buwi:
         return "지방제한(호주산)"
     return f"{buwi}(호주산)"
 
@@ -205,9 +211,22 @@ def parse_cafe24_row(row: pd.Series) -> list:
             key = k.strip().replace(" ", "")
             parts[key] = v.strip()
 
-    buwi    = parts.get("소고기부위종류", parts.get("소고기종류", ""))
+    buwi    = parts.get("소고기부위종류") or parts.get("소고기종류") or parts.get("고기종류") or ""
     cutting = parts.get("컷팅방식", "")
-    sopojang = parts.get("소포장선택", "")
+    # '소포장 선택(g)' 등 소포장선택으로 시작하는 키 모두 인식
+    sopojang = parts.get("소포장선택") or next((v for k, v in parts.items() if "소포장선택" in k), "")
+
+    # 삼겹살/목살 등 돼지고기 처리
+    # 예: '고기 종류=삼겹살 1cm (스페인산); 소포장 선택(g)=200g x 7팩'
+    if "삼겹살" in buwi or "목살" in buwi:
+        meat = "삼겹살" if "삼겹살" in buwi else "목살"
+        m_thick  = re.search(r'(\d+(?:\.\d+)?cm)', buwi)
+        m_origin = re.search(r'\(([^)]+산)\)', buwi)
+        thickness = m_thick.group(1)  if m_thick  else "1cm"
+        origin    = m_origin.group(1) if m_origin else "스페인산"
+        weight, packs = parse_size_packs(sopojang)
+        if weight:
+            return [(f"{meat}({origin}) {thickness} {weight}", packs * quantity, True)]
 
     if sopojang and sopojang != "nan":
         # 골라담기: 소포장 선택에 무게·팩수
@@ -307,6 +326,16 @@ def parse_ss_option(option: str, quantity: int):
         # 인기 6종 종합세트 → 개별 행으로 펼침
         if "인기 6종" in cutting or "6종 종합세트" in cutting:
             return [(build_product_name(b, c, w), quantity, True) for b, c, w in SET_6_200G]
+
+        # 돼지고기 삼겹살/목살 처리
+        # 예: '소고기 부위 종류: 돼지고기 삼겹살 / 컷팅방식: 구이용 / 소포장 선택: 200g X 7팩'
+        if "삼겹살" in buwi or "목살" in buwi:
+            meat = "삼겹살" if "삼겹살" in buwi else "목살"
+            # 구이용 → 1cm 두께
+            thickness = "1cm" if "구이용" in cutting else cutting
+            weight, packs = parse_size_packs(sopojang)
+            if weight:
+                return [(f"{meat}(스페인산) {thickness} {weight}", packs * quantity, True)]
 
         weight, packs = parse_size_packs(sopojang)
 
