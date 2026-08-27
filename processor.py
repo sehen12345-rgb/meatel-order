@@ -320,6 +320,16 @@ def parse_ss_option(option: str, quantity: int):
         product = build_product_name(buwi, cutting, weight or "")
         return [(product, packs * quantity, True)]
 
+    # 돼지고기 추가 옵션 (목살 등)
+    # 예: '돼지고기도 함께(배송비 절약): 구이용 목살 150g X 6팩 = 900g'
+    if "목살" in option:
+        detail = option.split(":", 1)[-1].strip() if ":" in option else option
+        m_w = re.search(r'(\d+g)', detail)
+        m_p = re.search(r'[xX×]\s*(\d+)팩', detail)
+        weight = m_w.group(1) if m_w else ""
+        packs  = int(m_p.group(1)) if m_p else quantity
+        return [(f"목살 {weight} 서비스", packs, True)]
+
     # 단품 추가형 (1팩 추가: ...)
     m = re.search(r'추가:\s*(.+)', option)
     if m:
