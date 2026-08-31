@@ -327,6 +327,16 @@ def parse_ss_option(option: str, quantity: int):
         if "인기 6종" in cutting or "6종 종합세트" in cutting:
             return [(build_product_name(b, c, w), quantity, True) for b, c, w in SET_6_200G]
 
+        # 소고기 3종 세트 (부채살/우둔살/홍두깨살) → 스테이크/큐브/슬라이스 분리
+        if "3종" in cutting and buwi:
+            weight, packs = parse_size_packs(sopojang)
+            if not weight:
+                weight, packs = parse_size_packs(cutting)
+            normalized = normalize_buwi(buwi)
+            per_cut = (packs * quantity) // 3
+            return [(f"{normalized} {cut} {weight or '200g'}", per_cut, True)
+                    for cut in ["스테이크", "큐브", "슬라이스"]]
+
         # 돼지고기 삼겹살/목살 처리
         # 예: '소고기 부위 종류: 돼지고기 삼겹살 / 컷팅방식: 구이용 / 소포장 선택: 200g X 7팩'
         if "삼겹살" in buwi or "목살" in buwi:
@@ -349,15 +359,29 @@ def parse_ss_option(option: str, quantity: int):
         product = build_product_name(buwi, cutting, weight or "")
         return [(product, packs * quantity, True)]
 
-    # 돼지고기 추가 옵션 (목살 등)
+    # 돼지고기 추가 옵션 (목살, 삼겹살)
     # 예: '돼지고기도 함께(배송비 절약): 구이용 목살 150g X 6팩 = 900g'
-    if "목살" in option:
+    # 예: '돼지고기도 함께(배송비 절약): 삼겹살 1cm X 5팩 = 1000g'
+    if "목살" in option or "삼겹살" in option:
+        meat = "삼겹살" if "삼겹살" in option else "목살"
         detail = option.split(":", 1)[-1].strip() if ":" in option else option
-        m_w = re.search(r'(\d+g)', detail)
         m_p = re.search(r'[xX×]\s*(\d+)팩', detail)
-        weight = m_w.group(1) if m_w else ""
-        packs  = int(m_p.group(1)) if m_p else quantity
-        return [(f"목살 {weight} 서비스", packs, True)]
+        packs = int(m_p.group(1)) if m_p else quantity
+
+        if meat == "목살":
+            m_w = re.search(r'(\d+g)', detail)
+            weight = m_w.group(1) if m_w else ""
+            return [(f"목살 {weight} 서비스", packs, True)]
+        else:
+            m_thick = re.search(r'(\d+(?:\.\d+)?cm)', detail)
+            m_total = re.search(r'=\s*(\d+)g', detail)
+            thickness = m_thick.group(1) if m_thick else "1cm"
+            if m_total and packs > 0:
+                weight = f"{int(m_total.group(1)) // packs}g"
+            else:
+                m_w = re.search(r'(\d+g)', detail)
+                weight = m_w.group(1) if m_w else "200g"
+            return [(f"삼겹살(스페인산) {thickness} {weight}", packs, True)]
 
     # 단품 추가형 (1팩 추가: ...)
     m = re.search(r'추가:\s*(.+)', option)
